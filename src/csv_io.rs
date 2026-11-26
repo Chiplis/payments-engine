@@ -21,6 +21,8 @@ pub enum RecordError {
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum InvalidRecord {
+    #[error("more fields than header columns; is there a comma inside a number?")]
+    TooManyFields,
     #[error("deposits and withdrawals need an amount")]
     MissingAmount,
     #[error(transparent)]
@@ -50,11 +52,18 @@ impl<R: Read> TransactionReader<R> {
     }
 
     fn parse_current_record(&self) -> Result<Transaction, RecordError> {
+        if self.record.len() > self.headers.len() {
+            return Err(self.invalid(InvalidRecord::TooManyFields));
+        }
         let row: Row = self.record.deserialize(Some(&self.headers))?;
-        Transaction::try_from(row).map_err(|reason| RecordError::Invalid {
+        Transaction::try_from(row).map_err(|reason| self.invalid(reason))
+    }
+
+    fn invalid(&self, reason: InvalidRecord) -> RecordError {
+        RecordError::Invalid {
             line: self.current_line(),
             reason,
-        })
+        }
     }
 
     fn current_line(&self) -> u64 {
@@ -201,6 +210,19 @@ mod tests {
         assert_eq!(
             transactions,
             [transaction(1, 10, Operation::Dispute(DisputeAction::Open))]
+        );
+    }
+
+    #[test]
+    fn a_row_with_more_fields_than_the_header_is_rejected() {
+        let records = read("type,client,tx,amount\ndeposit,1,1,1,000.00\ndispute,1,1,,\n");
+        let too_many = "more fields than header columns; is there a comma inside a number?";
+        assert_eq!(
+            records,
+            [
+                Err(format!("line 2: {too_many}")),
+                Err(format!("line 3: {too_many}")),
+            ]
         );
     }
 

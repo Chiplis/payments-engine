@@ -68,6 +68,9 @@ The engine knows nothing about CSV or files. `process` accepts any `Read` and
 | Deposit reusing an existing deposit's transaction id | Rejected. |
 | Withdrawal reusing a transaction id | Not detected. See [Efficiency](#efficiency). |
 | Amount that is zero, negative or has more than four decimal places | The row is skipped. Silently rounding money would be worse. |
+| Amount with a missing side of the decimal point, such as `1.` or `.5` | Read as `1.0` and `0.5`. |
+| Row with more fields than the header, such as `deposit,1,1,1,000.00` | The row is skipped. A thousands separator must not turn 1,000 into 1. |
+| Row with no amount column at all, such as `dispute,1,1` | Accepted for disputes, resolves and chargebacks. |
 | Amount on a dispute, resolve or chargeback row | Ignored. |
 | Rejected withdrawal for an unseen client | The client appears in the output with zero balances. |
 | Unreadable row for an unseen client | No client is created. |

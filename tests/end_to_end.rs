@@ -63,7 +63,7 @@ fn invalid_records_and_rejected_transactions_are_skipped() {
     let processed = process("invalid_and_rejected");
 
     assert_eq!(processed.output, expected_output("invalid_and_rejected"));
-    assert_eq!(processed.skipped.len(), 13);
+    assert_eq!(processed.skipped.len(), 14);
 }
 
 #[test]

@@ -149,3 +149,24 @@ Decisions I made that we had not discussed:
 The crate is named `payments-engine` and mentions neither the company nor the PDF, as the brief requires.
 
 If you want to keep this work, I can move this session to a folder you choose.
+
+---
+
+## User
+
+> Rows with extra headings like `deposit,1,1,1,000.00` still get processed by our engine, correct? I think those should probably error out, to avoid user-error mixing up commas and periods.
+>
+> Also, `1.` is a valid value while `.5` is not, let's keep it consistent and allow the latter as well by assuming a leading zero.
+
+## Claude
+
+*Ran the engine on a three-row probe file, which confirmed the extra field was being dropped. Changed the reader and the amount parser, added tests, extended a fixture and the README, then ran rustfmt, clippy and the full test suite.*
+
+You were right: `deposit,1,1,1,000.00` was being accepted as a deposit of 1, with the trailing `000.00` silently dropped. Both changes are in, with 57 tests passing and clippy clean; nothing is committed or pushed yet.
+
+- **Extra fields:** a row with more fields than the header is now skipped with `line N: more fields than header columns; is there a comma inside a number?`. The check is in [csv_io.rs](src/csv_io.rs).
+- **Leading zero:** `.5` is now read as 0.5, matching `1.` being read as 1. A lone `.` and an empty amount are still rejected, and `.0` and `0.` are rejected as zero amounts. The change is in [money.rs](src/money.rs).
+
+The extra-field rule also rejects a dispute row with a surplus trailing comma, such as `dispute,1,1,,`. Rows with fewer fields than the header, like `dispute,1,1`, are still accepted. If you'd rather tolerate surplus empty fields, say so and I'll loosen it.
+
+I added a unit test for each change, a `1,000.00` row to the invalid-input fixture, and three rows to the README's assumptions table.

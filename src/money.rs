@@ -32,7 +32,8 @@ impl FromStr for Amount {
     fn from_str(text: &str) -> Result<Self, AmountError> {
         let (whole, fraction) = text.split_once('.').unwrap_or((text, ""));
 
-        if whole.is_empty() || !is_all_digits(whole) || !is_all_digits(fraction) {
+        let has_no_digits = whole.is_empty() && fraction.is_empty();
+        if has_no_digits || !is_all_digits(whole) || !is_all_digits(fraction) {
             return Err(AmountError::Malformed);
         }
         if fraction.len() > DECIMAL_PLACES {
@@ -54,23 +55,26 @@ fn is_all_digits(text: &str) -> bool {
     text.bytes().all(|byte| byte.is_ascii_digit())
 }
 
+/// A missing side of the decimal point counts as zero: `1.` is 1 and `.5` is 0.5.
+fn digits_or_zero(digits: &str) -> Option<i64> {
+    if digits.is_empty() {
+        Some(0)
+    } else {
+        digits.parse().ok()
+    }
+}
+
 fn whole_units(digits: &str) -> Result<i64, AmountError> {
-    digits
-        .parse::<i64>()
-        .ok()
+    digits_or_zero(digits)
         .and_then(|whole| whole.checked_mul(UNITS_PER_WHOLE))
         .ok_or(AmountError::TooLarge)
 }
 
 fn fraction_units(digits: &str) -> Result<i64, AmountError> {
-    if digits.is_empty() {
-        return Ok(0);
-    }
     let missing_places = (DECIMAL_PLACES - digits.len()) as u32;
-    digits
-        .parse::<i64>()
+    digits_or_zero(digits)
         .map(|fraction| fraction * 10_i64.pow(missing_places))
-        .map_err(|_| AmountError::Malformed)
+        .ok_or(AmountError::Malformed)
 }
 
 /// A signed account balance. Unlike an [`Amount`] it may be negative: disputing
@@ -148,6 +152,7 @@ mod tests {
     fn parses_every_supported_precision() {
         assert_eq!(amount("1"), Amount(10_000));
         assert_eq!(amount("1."), Amount(10_000));
+        assert_eq!(amount(".5"), Amount(5_000));
         assert_eq!(amount("1.5"), Amount(15_000));
         assert_eq!(amount("1.05"), Amount(10_500));
         assert_eq!(amount("0.0001"), Amount(1));
@@ -157,7 +162,7 @@ mod tests {
     #[test]
     fn rejects_text_that_is_not_an_unsigned_decimal() {
         for text in [
-            "", ".", ".5", "-1", "+1", "1e3", "1.2.3", "1,5", "abc", " 1",
+            "", ".", "-1", "-.5", "+1", "1e3", "1.2.3", "1,5", "abc", " 1",
         ] {
             assert_eq!(
                 text.parse::<Amount>(),
@@ -176,6 +181,8 @@ mod tests {
     fn rejects_zero() {
         assert_eq!("0".parse::<Amount>(), Err(AmountError::NotPositive));
         assert_eq!("0.0000".parse::<Amount>(), Err(AmountError::NotPositive));
+        assert_eq!(".0".parse::<Amount>(), Err(AmountError::NotPositive));
+        assert_eq!("0.".parse::<Amount>(), Err(AmountError::NotPositive));
     }
 
     #[test]
